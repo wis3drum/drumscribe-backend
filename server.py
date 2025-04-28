@@ -3,6 +3,8 @@ import uvicorn
 import os
 import shutil
 import youtube_dl
+import librosa
+import numpy as np
 from pydub import AudioSegment
 import matplotlib.pyplot as plt
 
@@ -17,8 +19,8 @@ MAX_FILE_SIZE_MB = 20
 
 @app.post("/upload-audio/")
 async def upload_audio(file: UploadFile = File(...)):
-    if not file.filename.endswith(('.wav', '.mp3', '.ogg', '.flac')):
-        raise HTTPException(status_code=400, detail="Invalid file type. Only audio files are allowed.")
+    if not file.filename.endswith(('.wav', '.mp3', '.ogg', '.flac', '.webm')):
+        raise HTTPException(status_code=400, detail="Invalid file type. Only audio files are allowed (.wav, .mp3, .ogg, .flac, .webm).")
 
     contents = await file.read()
     file_size_mb = len(contents) / (1024 * 1024)
@@ -30,7 +32,7 @@ async def upload_audio(file: UploadFile = File(...)):
     with open(file_path, "wb") as f:
         f.write(contents)
 
-    num_hits = simulate_detect_hits(file_path)
+    num_hits = detect_drum_hits(file_path)
     partition_image_path = generate_partition_image(file_path, num_hits)
     image_url = f"https://drumscribe.onrender.com/{partition_image_path}"
 
@@ -53,8 +55,10 @@ async def process_link(link: str = Form(...)):
             info = ydl.extract_info(link, download=True)
             filename = ydl.prepare_filename(info)
 
-        # After download
-        num_hits = simulate_detect_hits(filename)
+            if not os.path.exists(filename):
+                raise HTTPException(status_code=400, detail="Error downloading audio file.")
+
+        num_hits = detect_drum_hits(filename)
         partition_image_path = generate_partition_image(filename, num_hits)
         image_url = f"https://drumscribe.onrender.com/{partition_image_path}"
 
@@ -65,25 +69,26 @@ async def process_link(link: str = Form(...)):
             "partition_image_url": image_url
         }
     except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        raise HTTPException(status_code=400, detail=f"Error processing link: {str(e)}")
 
-def simulate_detect_hits(file_path):
+def detect_drum_hits(file_path):
     try:
-        audio = AudioSegment.from_file(file_path)
-        duration_seconds = len(audio) / 1000
-        estimated_hits = int(duration_seconds * 2)
-        return estimated_hits
+        y, sr = librosa.load(file_path, sr=None)
+        onset_env = librosa.onset.onset_strength(y=y, sr=sr)
+        onsets = librosa.onset.onset_detect(onset_envelope=onset_env, sr=sr, backtrack=True)
+        return len(onsets)
     except Exception as e:
-        return f"Error processing audio: {str(e)}"
+        print(f"Error detecting hits: {e}")
+        return 0
 
 def generate_partition_image(file_path, num_hits):
     output_image_path = os.path.join(PARTITION_DIR, f"{os.path.basename(file_path)}_partition.png")
 
     plt.figure(figsize=(12, 2))
     plt.plot([i for i in range(num_hits)], [0 for _ in range(num_hits)], 'ro')
-    plt.title("DrumScribe AI - Estimated Drum Hits")
+    plt.title("DrumScribe AI - Detected Drum Hits")
     plt.yticks([])
-    plt.xticks(range(0, num_hits, max(1, num_hits // 10)))
+    plt.xticks(range(0, max(1, num_hits), max(1, num_hits // 10)))
     plt.grid(True)
     plt.savefig(output_image_path)
     plt.close()
