@@ -19,29 +19,32 @@ MAX_FILE_SIZE_MB = 20
 
 @app.post("/upload-audio/")
 async def upload_audio(file: UploadFile = File(...)):
-    if not file.filename.endswith(('.wav', '.mp3', '.ogg', '.flac', '.webm')):
-        raise HTTPException(status_code=400, detail="Invalid file type. Only audio files are allowed (.wav, .mp3, .ogg, .flac, .webm).")
+    try:
+        if not file.filename.endswith(('.wav', '.mp3', '.ogg', '.flac', '.webm')):
+            raise HTTPException(status_code=400, detail="Invalid file type. Only audio files are allowed (.wav, .mp3, .ogg, .flac, .webm).")
 
-    contents = await file.read()
-    file_size_mb = len(contents) / (1024 * 1024)
+        contents = await file.read()
+        file_size_mb = len(contents) / (1024 * 1024)
 
-    if file_size_mb > MAX_FILE_SIZE_MB:
-        raise HTTPException(status_code=400, detail="File too large. Max 20MB allowed.")
+        if file_size_mb > MAX_FILE_SIZE_MB:
+            raise HTTPException(status_code=400, detail="File too large. Max 20MB allowed.")
 
-    file_path = os.path.join(UPLOAD_DIR, file.filename)
-    with open(file_path, "wb") as f:
-        f.write(contents)
+        file_path = os.path.join(UPLOAD_DIR, file.filename)
+        with open(file_path, "wb") as f:
+            f.write(contents)
 
-    num_hits = detect_drum_hits(file_path)
-    partition_image_path = generate_partition_image(file_path, num_hits)
-    image_url = f"https://drumscribe.onrender.com/{partition_image_path}"
+        num_hits = detect_drum_hits(file_path)
+        partition_image_path = generate_partition_image(file_path, num_hits)
+        image_url = f"https://drumscribe.onrender.com/{partition_image_path}"
 
-    return {
-        "message": "Audio processed.",
-        "file_name": file.filename,
-        "estimated_hits": num_hits,
-        "partition_image_url": image_url
-    }
+        return {
+            "message": "Audio processed successfully.",
+            "file_name": file.filename,
+            "estimated_hits": num_hits,
+            "partition_image_url": image_url
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Server error during upload: {str(e)}")
 
 @app.post("/process-link/")
 async def process_link(link: str = Form(...)):
@@ -63,22 +66,22 @@ async def process_link(link: str = Form(...)):
         image_url = f"https://drumscribe.onrender.com/{partition_image_path}"
 
         return {
-            "message": "Link processed.",
+            "message": "Link processed successfully.",
             "file_name": os.path.basename(filename),
             "estimated_hits": num_hits,
             "partition_image_url": image_url
         }
     except Exception as e:
-        raise HTTPException(status_code=400, detail=f"Error processing link: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Server error during link processing: {str(e)}")
 
 def detect_drum_hits(file_path):
     try:
-        y, sr = librosa.load(file_path, sr=None)
+        y, sr = librosa.load(file_path, sr=None, mono=True)
         onset_env = librosa.onset.onset_strength(y=y, sr=sr)
         onsets = librosa.onset.onset_detect(onset_envelope=onset_env, sr=sr, backtrack=True)
         return len(onsets)
     except Exception as e:
-        print(f"Error detecting hits: {e}")
+        print(f"Error during hit detection: {e}")
         return 0
 
 def generate_partition_image(file_path, num_hits):
