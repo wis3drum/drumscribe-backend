@@ -7,3 +7,4 @@ torch
 torchaudio
 matplotlib
 python-multipart
+librosa
