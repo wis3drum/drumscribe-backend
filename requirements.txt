@@ -8,3 +8,4 @@ torchaudio
 matplotlib
 python-multipart
 librosa
+yt-dlp
