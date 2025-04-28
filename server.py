@@ -2,7 +2,7 @@ from fastapi import FastAPI, UploadFile, File, Form, HTTPException
 import uvicorn
 import os
 import shutil
-import youtube_dl
+import yt_dlp
 import librosa
 import numpy as np
 from pydub import AudioSegment
@@ -54,7 +54,7 @@ async def process_link(link: str = Form(...)):
             'outtmpl': f'{UPLOAD_DIR}/%(title)s.%(ext)s',
             'quiet': True
         }
-        with youtube_dl.YoutubeDL(ydl_opts) as ydl:
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(link, download=True)
             filename = ydl.prepare_filename(info)
 
